@@ -103,9 +103,14 @@ def get_blue_provider() -> str:
     return BLUE_PROVIDER
 
 
+# OpenRouter (2026-09) chỉ còn endpoint ``liquid/lfm-2.5-2.6b:free`` — slug không hậu tố
+# trả 404 "No endpoints found". Cùng model, chỉ khác route → vẫn đúng Blue model lab.
+BLUE_MODEL_ROUTE_SUFFIX = ":free"
+
+
 def get_blue_model() -> str:
     # Hard-locked; env cannot override for the graded Blue Team path.
-    return BLUE_MODEL
+    return BLUE_MODEL + BLUE_MODEL_ROUTE_SUFFIX
 
 
 def get_openrouter_api_key() -> str:

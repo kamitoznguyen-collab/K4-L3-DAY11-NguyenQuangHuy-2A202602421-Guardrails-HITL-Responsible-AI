@@ -1,5 +1,19 @@
 # Day 11 — Controlled Agent Security (2026)
 
+> **Học viên:** Nguyễn Quang Huy · **MSSV:** 2A202602421 · **Bonus chọn:** B2 (Red Advance)
+>
+> **Cách chạy (từ gốc repo, sau khi điền `.env`):**
+> ```bash
+> python src/main.py --part 2   # CP2 — guardrails (offline)
+> python src/main.py --part 3   # CP3 — Blue pipeline → outputs/results.json, audit_log.json, metrics.json
+> python src/main.py --part 4   # CP4 — Red + Red Advance → outputs/attack_results.json
+> python scripts/grade.py --submission-dir . --out outputs/grade_report.json
+> ```
+> **Blue pipeline:** `RateLimitPlugin → InputGuardrailPlugin → LLM → OutputGuardrailPlugin`, audit + monitoring
+> là observer bên cạnh, `is_egress_allowed()` là cổng rule-based cho mọi dữ liệu ra ngoài.
+> Ghi chú: OpenRouter hiện chỉ còn route `liquid/lfm-2.5-2.6b:free` cho Blue model (slug không hậu tố trả 404) —
+> xem `src/core/config.py`.
+
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** xây **Blue** (phòng thủ), rồi red-team **Red** + **Red Advance**.  
 > ✅ Làm theo **Checkpoint 1 → 5** trong [`CHECKPOINTS.md`](CHECKPOINTS.md) · nộp theo [`SUBMISSION.md`](SUBMISSION.md).
