@@ -37,18 +37,20 @@ def content_filter(response: str) -> dict:
     Returns:
         dict with 'safe', 'issues', and 'redacted' keys
     """
-    issues = []
     # Bỏ ký tự vô hình để "sk-​vinbank..." không lọt qua regex
     text = (response or "").translate(_INVISIBLE_TABLE)
     redacted = text
+    found: dict[str, int] = {}
 
-    # Thứ tự quan trọng: secret/credential trước, rồi PII.
+    # [1] Phát hiện theo CẤU TRÚC (regex) — tổng quát, bắt cả credential CHƯA biết giá trị.
+    #     Không phụ thuộc secret cụ thể nào → không cần hardcode giá trị vào mã.
     for name, pattern in PII_PATTERNS.items():
-        matches = re.findall(pattern, redacted, re.IGNORECASE)
-        if name == "email":
-            matches = [m for m in matches if m.lower() not in OFFICIAL_CONTACTS]
-        if matches:
-            issues.append(f"{name}: {len(matches)} found")
+        hits = [
+            m for m in re.findall(pattern, redacted, re.IGNORECASE)
+            if not (name == "email" and m.lower() in OFFICIAL_CONTACTS)
+        ]
+        if hits:
+            found[name] = found.get(name, 0) + len(hits)
             redacted = re.sub(
                 pattern,
                 lambda m: m.group(0) if m.group(0).lower() in OFFICIAL_CONTACTS else "[REDACTED]",
@@ -56,15 +58,22 @@ def content_filter(response: str) -> dict:
                 flags=re.IGNORECASE,
             )
 
-    # Lớp cuối: secret bị "ngụy trang" (chèn dấu cách / dấu chấm / gạch giữa các ký tự)
-    # mà regex ở trên không bắt được → không thể redact từng chỗ, báo để plugin chặn cả câu.
+    # [2] Giá trị secret NẠP TỪ data/protected/vinbank_secrets.json (theo leak_targets),
+    #     KHÔNG hardcode trong mã guardrail → redact nội dòng các dạng bề mặt còn sót.
+    for form in _SECRET_SURFACE:
+        if re.search(re.escape(form), redacted, re.IGNORECASE):
+            found["known_secret"] = found.get("known_secret", 0) + 1
+            redacted = re.sub(re.escape(form), "[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    # [3] Secret bị "ngụy trang" (chèn dấu cách/chấm/gạch giữa các ký tự) — regex không bắt được
+    #     → không redact được từng chỗ, chỉ báo cờ để plugin chặn cả câu (fail-closed).
     compact = re.sub(r"[^a-z0-9]", "", redacted.lower())
-    if any(s and s in compact for s in _SECRET_NEEDLES):
-        issues.append("secret_obfuscated: 1 found")
+    if any(s and s in compact for s in _SECRET_COMPACT):
+        found["secret_obfuscated"] = found.get("secret_obfuscated", 0) + 1
 
     return {
-        "safe": len(issues) == 0,
-        "issues": issues,
+        "safe": not found,
+        "issues": [f"{name}: {count} found" for name, count in found.items()],
         "redacted": redacted,
     }
 
@@ -82,7 +91,6 @@ PII_PATTERNS = {
                 r"(?:[:=]\s*\S+|(?:is|là)\s+(?=\S*[\d!@#$%^&*_])\S+)",
     "api_key": r"\bsk-[A-Za-z0-9_-]{6,}",
     "internal_host": r"\b[\w-]+(?:\.[\w-]+)*\.internal(?::\d+)?\b",
-    "known_secret": r"\badmin123\b",
     # PII
     "email": r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-zA-Z]{2,}",
     # SĐT VN: 0xxxxxxxxx (10–11 số) hoặc +84 / 84 — không dính vào dãy số dài hơn
@@ -91,8 +99,12 @@ PII_PATTERNS = {
     "national_id": r"(?<!\d)(?:\d{12}|\d{9})(?!\d)",
 }
 
-# Secret thật của lab (data/protected/vinbank_secrets.json), dạng chỉ còn chữ + số
-_SECRET_NEEDLES = {re.sub(r"[^a-z0-9]", "", s.lower()) for s in DEMO_SECRETS}
+# Giá trị secret NẠP TỪ file dữ liệu (config.DEMO_SECRETS ← vinbank_secrets.json).
+# KHÔNG hardcode chuỗi secret trong mã guardrail — đổi secret trong file là filter tự cập nhật.
+#   _SECRET_SURFACE : dạng bề mặt (đúng như trong file) để redact nội dòng
+#   _SECRET_COMPACT : dạng chỉ chữ+số để bắt khi secret bị chèn ký tự
+_SECRET_SURFACE = sorted({s for s in DEMO_SECRETS if s}, key=len, reverse=True)
+_SECRET_COMPACT = {re.sub(r"[^a-z0-9]", "", s.lower()) for s in DEMO_SECRETS if s}
 
 # Loại issue nghiêm trọng: lộ credential → chặn toàn bộ câu trả lời (fail-closed)
 SECRET_ISSUE_TYPES = ("password", "api_key", "internal_host", "known_secret", "secret_obfuscated")

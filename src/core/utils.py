@@ -2,9 +2,22 @@
 Lab 11 — Helper Utilities
 """
 import asyncio
+import time
 
 from core.config import get_llm_provider, PROVIDER_OPENROUTER  # noqa: F401
 from core.openai_runtime import OpenAIRunner
+
+# Giãn nhịp tối thiểu giữa 2 lượt gọi Gemini để tránh vượt giới hạn request/phút của bản free.
+_GEMINI_MIN_INTERVAL = 5.0
+_last_gemini_ts = 0.0
+
+
+async def _pace_gemini() -> None:
+    global _last_gemini_ts
+    wait = _GEMINI_MIN_INTERVAL - (time.monotonic() - _last_gemini_ts)
+    if wait > 0:
+        await asyncio.sleep(wait)
+    _last_gemini_ts = time.monotonic()
 
 # Bản Gemini free: 429 RESOURCE_EXHAUSTED khi gọi dồn (giới hạn request/phút),
 # và 503 UNAVAILABLE khi model quá tải tạm thời. Cả hai đều là lỗi tạm thời →
@@ -65,6 +78,7 @@ async def chat_with_agent(agent, runner, user_message: str, session_id=None):
     last_err: Exception | None = None
     for attempt in range(_GEMINI_MAX_RETRIES):
         final_response = ""
+        await _pace_gemini()
         try:
             async for event in runner.run_async(
                 user_id=user_id, session_id=session.id, new_message=content
