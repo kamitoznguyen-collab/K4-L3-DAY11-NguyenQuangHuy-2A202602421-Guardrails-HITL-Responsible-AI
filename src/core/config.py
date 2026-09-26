@@ -43,6 +43,9 @@ DEFAULT_OPENROUTER_MODEL = BLUE_MODEL  # alias
 # --- Red Team ---
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+# Route Red qua OpenRouter (RED_TEAM_PROVIDER=openrouter) khi hết quota Gemini/không có key OpenAI.
+# Model đích vẫn là gpt-4o-mini thật (slug OpenRouter) → đúng model mặc định lab yêu cầu.
+DEFAULT_RED_OPENROUTER_MODEL = "openai/gpt-4o-mini"
 # Model khó — tuỳ chọn (không phải tên agent; không bắt buộc để có B1/B2)
 HARD_OPENAI_MODEL = "gpt-5.6-luna"
 HARD_GEMINI_MODEL = "gemini-3.8-flash"
@@ -144,15 +147,23 @@ def get_red_provider() -> str:
     ).strip().lower()
     if raw in {"gemini", "google", "adk"}:
         return PROVIDER_GEMINI
+    if raw in {"openrouter", "router", "or"}:
+        return PROVIDER_OPENROUTER
     return PROVIDER_OPENAI
 
 
 def get_red_model() -> str:
     """Model Red Team từ .env (cùng cho default + advance)."""
-    if get_red_provider() == PROVIDER_GEMINI:
+    provider = get_red_provider()
+    if provider == PROVIDER_GEMINI:
         return (
             os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
             or DEFAULT_GEMINI_MODEL
+        )
+    if provider == PROVIDER_OPENROUTER:
+        return (
+            os.environ.get("RED_OPENROUTER_MODEL", DEFAULT_RED_OPENROUTER_MODEL).strip()
+            or DEFAULT_RED_OPENROUTER_MODEL
         )
     return (
         os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip()
@@ -175,6 +186,9 @@ def get_openai_api_key() -> str:
 
 
 def red_openai_client_kwargs() -> dict:
+    # OpenRouter: dùng chung base_url + key OpenRouter (giống Blue), model = openai/gpt-4o-mini
+    if get_red_provider() == PROVIDER_OPENROUTER:
+        return blue_client_kwargs()
     return {"api_key": get_openai_api_key() or None}
 
 
@@ -185,7 +199,8 @@ def red_provider_label(tier: str = "advance") -> str:
 
 
 def red_uses_openai_sdk() -> bool:
-    return get_red_provider() == PROVIDER_OPENAI
+    # OpenRouter cũng đi qua OpenAI SDK (chỉ khác base_url)
+    return get_red_provider() in (PROVIDER_OPENAI, PROVIDER_OPENROUTER)
 
 
 def red_uses_gemini() -> bool:
@@ -254,6 +269,9 @@ def setup_api_key():
             os.environ["GOOGLE_API_KEY"] = input("Enter Google API Key (Red): ").strip()
         os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "0"
         print(f"Red / Red Advance  — gemini:{model}")
+    elif red == PROVIDER_OPENROUTER:
+        # Dùng chung OPENROUTER_API_KEY (đã đảm bảo ở trên) — Red chạy openai/gpt-4o-mini qua OpenRouter
+        print(f"Red / Red Advance  — openrouter:{model}")
     else:
         if not get_openai_api_key():
             os.environ["OPENAI_API_KEY"] = input("Enter OpenAI API Key (Red): ").strip()

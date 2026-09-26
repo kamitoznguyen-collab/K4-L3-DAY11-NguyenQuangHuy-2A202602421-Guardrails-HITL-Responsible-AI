@@ -11,8 +11,16 @@
 > ```
 > **Blue pipeline:** `RateLimitPlugin → InputGuardrailPlugin → LLM → OutputGuardrailPlugin`, audit + monitoring
 > là observer bên cạnh, `is_egress_allowed()` là cổng rule-based cho mọi dữ liệu ra ngoài.
-> Ghi chú: OpenRouter hiện chỉ còn route `liquid/lfm-2.5-2.6b:free` cho Blue model (slug không hậu tố trả 404) —
-> xem `src/core/config.py`.
+>
+> **Ghi chú môi trường (báo Key Coach nếu cần):**
+> - Blue: OpenRouter hiện chỉ còn route `liquid/lfm-2.5-2.6b:free` (slug không hậu tố trả 404) — xem `src/core/config.py`.
+> - Red / Red Advance (CP4): Gemini free-tier hết quota theo ngày lúc làm bài, nên route Red qua **OpenRouter**
+>   tới **`openai/gpt-4o-mini`** (vẫn đúng model mặc định lab yêu cầu, chỉ khác cổng vào). Đặt bằng
+>   `RED_TEAM_PROVIDER=openrouter` trong `.env`; dùng chung `OPENROUTER_API_KEY`.
+>
+> **Kết quả CP4:** Red default leak **4/5** (bằng chứng cho phần bắt buộc + **B1** tối đa +5).
+> Red Advance chặn **5/5** ngay ở input injection filter → **B2 = 0** (guardrails cứng, không được làm yếu).
+> ⇒ Bonus khả thi thực tế là **B1**, không phải B2.
 
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** xây **Blue** (phòng thủ), rồi red-team **Red** + **Red Advance**.  
